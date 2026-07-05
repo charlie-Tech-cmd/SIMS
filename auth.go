@@ -1,174 +1,263 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"strings"
-	"time"
+
+	"sims/storage"
 )
 
-// GenerateOTP creates a secure 6-digit verification code and validates OS entropy
-func GenerateOTP() string {
-	b := make([]byte, 3)
-	_, err := rand.Read(b)
-	if err != nil {
-		// Secure fallback using current timestamp Unix nanoseconds if system entropy fails
-		now := time.Now().UnixNano()
-		return fmt.Sprintf("%06d", uint32(now)%1000000)
+// EnsureSeedDataExist adds default users and courses
+// if the database is empty.
+func (ss *SchoolSystem) EnsureSeedDataExist() {
+	exists, err := ss.DB.CheckLecturerExists()
+	if err != nil || exists {
+		return
 	}
-	// Correctly ensures a clean 6-character output format boundary
-	return fmt.Sprintf("%06d", (uint32(b[0])<<16|uint32(b[1])<<8|uint32(b[2]))%1000000)
+
+	fmt.Println("Setting up default system data...")
+
+	seedUsers := []storage.User{
+		{
+			ID:               "STF001",
+			Surname:          "Eze",
+			FirstName:        "Chidi",
+			Password:         "password123",
+			Email:            "c.eze@university.edu",
+			Role:             "lecturer",
+			SecurityQuestion: "What is your favorite color?",
+			SecurityAnswer:   "blue",
+		},
+		{
+			ID:               "STF002",
+			Surname:          "Okonkwo",
+			FirstName:        "Bisi",
+			Password:         "password123",
+			Email:            "b.okonkwo@university.edu",
+			Role:             "lecturer",
+			SecurityQuestion: "What town were you born in?",
+			SecurityAnswer:   "lagos",
+		},
+		{
+			ID:               "STU001",
+			Surname:          "Adeleke",
+			FirstName:        "Tunde",
+			Password:         "password123",
+			Email:            "t.adeleke@university.edu",
+			Role:             "student",
+			SecurityQuestion: "What is your pet's name?",
+			SecurityAnswer:   "rex",
+		},
+	}
+
+	for _, user := range seedUsers {
+		_ = ss.DB.SaveUser(&user)
+	}
+
+	seedCourses := []storage.Course{
+		{
+			Code:             "CMP101",
+			Title:            "Introduction to Computer Science",
+			Units:            3,
+			PrerequisiteCode: "",
+			LecturerID:       "STF001",
+			LecturerName:     "Eze Chidi",
+		},
+		{
+			Code:             "MTH101",
+			Title:            "General Mathematics I",
+			Units:            4,
+			PrerequisiteCode: "",
+			LecturerID:       "STF002",
+			LecturerName:     "Okonkwo Bisi",
+		},
+		{
+			Code:             "CMP201",
+			Title:            "Data Structures and Algorithms",
+			Units:            4,
+			PrerequisiteCode: "CMP101",
+			LecturerID:       "STF001",
+			LecturerName:     "Eze Chidi",
+		},
+		{
+			Code:             "CMP301",
+			Title:            "Advanced Software Architecture",
+			Units:            6,
+			PrerequisiteCode: "CMP201",
+			LecturerID:       "STF001",
+			LecturerName:     "Eze Chidi",
+		},
+	}
+
+	for _, course := range seedCourses {
+		_ = ss.DB.SaveCourse(&course)
+	}
+
+	mockResult := &storage.StudentResult{
+		StudentID:  "STU001",
+		CourseCode: "MTH101",
+		Score:      35,
+		Grade:      "F",
+		Status:     "CARRY-OVER",
+	}
+
+	_ = ss.DB.SaveResult(mockResult)
+
+	fmt.Println("Default users and courses added successfully.")
 }
 
-// HandleStudentRegister appends new student profiles onto disk using the db engine layer
-func (ss *SchoolSystem) HandleStudentRegister() {
-	fmt.Println("\n--- Create Student Account ---")
-	
-	fmt.Print("Enter Matriculation Number: ")
-	id := ss.SanitizeField(ss.ReadInput())
+// HandleUserLogin authenticates a user account.
+func (ss *SchoolSystem) HandleUserLogin() {
+	fmt.Println("\n--- Login ---")
+
+	fmt.Print("Enter ID: ")
+	id := ss.ReadInput()
 
 	if id == "" {
-		fmt.Println("Error: Matriculation number cannot be empty.")
 		return
 	}
 
-	if _, exists := ss.Users[id]; exists {
-		fmt.Println("Error: An account with this Matriculation Number already exists!")
-		return
-	}
-
-	fmt.Print("Surname: ")
-	surname := ss.SanitizeField(ss.ReadInput())
-	
-	fmt.Print("Middle Name: ")
-	middleName := ss.SanitizeField(ss.ReadInput())
-	
-	fmt.Print("First Name: ")
-	firstName := ss.SanitizeField(ss.ReadInput())
-	
-	fmt.Print("Create Password: ")
-	password := ss.SanitizeField(ss.ReadInput())
-	
-	fmt.Print("Email Address: ")
-	email := ss.SanitizeField(ss.ReadInput())
-
-	if surname == "" || firstName == "" || password == "" || email == "" {
-		fmt.Println("Error: All fields (except Middle Name) are mandatory.")
-		return
-	}
-
-	// Save cleanly to the active global in-memory map structure
-	ss.Users[id] = User{
-		ID:         id,
-		Surname:    surname,
-		MiddleName: middleName,
-		FirstName:  firstName,
-		Password:   password,
-		Email:      email,
-		Role:       "student",
-	}
-
-	// CRITICAL FIX: Flush using the unified database engine rather than manual appending
-	ss.RewriteUsers()
-	fmt.Printf("Success! Account created for %s %s.\n", surname, firstName)
-}
-
-// HandleLogin executes case-insensitive folding validation and routes via tagged switch
-func (ss *SchoolSystem) HandleLogin() {
-	fmt.Println("\n--- Portal Identity Login ---")
-	
-	fmt.Print("Matric No / Staff ID: ")
-	id := ss.ReadInput()
-	
-	fmt.Print("Surname: ")
-	surname := ss.ReadInput()
-	
-	fmt.Print("Middle Name: ")
-	middleName := ss.ReadInput()
-	
-	fmt.Print("First Name: ")
-	firstName := ss.ReadInput()
-	
-	fmt.Print("Password: ")
+	fmt.Print("Enter Password: ")
 	password := ss.ReadInput()
 
-	user, exists := ss.Users[id]
-	if !exists || user.Password != password {
-		fmt.Println("Error: Invalid credentials verification failed.")
+	user, err := ss.DB.GetUserByID(id)
+	if err != nil {
+		fmt.Printf("Could not complete login: %v\n", err)
 		return
 	}
 
-	// Idiomatic Case-Insensitive Check
-	if !strings.EqualFold(user.Surname, surname) ||
-		!strings.EqualFold(user.MiddleName, middleName) ||
-		!strings.EqualFold(user.FirstName, firstName) {
-		fmt.Println("Error: Identity names do not match official records.")
+	if user == nil || user.Password != password {
+		fmt.Println("Invalid ID or password.")
 		return
 	}
 
-	// Tagged Switch handling role authorization routing
-	switch user.Role {
-	case "lecturer":
-		ss.LecturerMenu(user.Surname + " " + user.FirstName)
-	case "student":
-		ss.StudentMenu(user.ID)
-	default:
-		fmt.Println("Error: Corrupted or unassigned account profile role.")
+	fmt.Printf("\nWelcome back, %s %s.\n", user.Surname, user.FirstName)
+
+	if user.Role == "lecturer" {
+		ss.RunLecturerDashboard(user)
+	} else {
+		ss.RunStudentDashboard(user)
 	}
 }
 
-// RequestPasswordReset initiates safe password recovery workflows
-func (ss *SchoolSystem) RequestPasswordReset() {
-	fmt.Print("\nEnter Matric No / Staff ID: ")
+// HandleDirectPasswordRecovery helps users reset forgotten passwords.
+func (ss *SchoolSystem) HandleDirectPasswordRecovery() {
+	fmt.Println("\n--- Password Recovery ---")
+
+	fmt.Print("Enter your User ID: ")
 	id := ss.ReadInput()
 
-	user, exists := ss.Users[id]
-	if !exists {
-		// Generic return prevents data enumeration attacks sniffing registered IDs
-		fmt.Println("Process initialized. If details match, look at your console email output.")
+	if id == "" {
 		return
 	}
 
-	code := GenerateOTP()
-	ss.PendingOTPs[id] = OTP{
-		Code:      code,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
+	user, err := ss.DB.GetUserByID(id)
+	if err != nil {
+		fmt.Printf("Database error: %v\n", err)
+		return
 	}
 
-	fmt.Println("\n--- [SIMULATED EMAIL NOTIFICATION SYSTEM] ---")
-	fmt.Printf("To: %s\nDear %s %s,\nYour reset OTP token code is: %s\n", user.Email, user.Surname, user.FirstName, code)
-	fmt.Println("----------------------------------------------")
+	if user == nil {
+		fmt.Println("No account found with that ID.")
+		return
+	}
+
+	if user.SecurityQuestion == "" || user.SecurityAnswer == "" {
+		fmt.Println("This account does not have recovery settings enabled.")
+		return
+	}
+
+	fmt.Printf("\nSecurity Question for %s:\n", user.ID)
+	fmt.Printf("%s\n", user.SecurityQuestion)
+
+	fmt.Print("Answer: ")
+	answer := strings.ToLower(ss.ReadInput())
+
+	if answer != strings.ToLower(user.SecurityAnswer) {
+		fmt.Println("Incorrect answer.")
+		return
+	}
+
+	fmt.Print("\nEnter your new password: ")
+	newPassword := ss.ReadInput()
+
+	if len(newPassword) < 6 {
+		fmt.Println("Password must be at least 6 characters long.")
+		return
+	}
+
+	if err := ss.DB.UpdateUserPassword(user.ID, newPassword); err != nil {
+		fmt.Printf("Could not update password: %v\n", err)
+		return
+	}
+
+	fmt.Println("Password updated successfully.")
 }
 
-// VerifyAndResetPassword validates tokens and securely updates the database file
-func (ss *SchoolSystem) VerifyAndResetPassword() {
-	fmt.Print("\nEnter Matric No / Staff ID: ")
+// HandleNewUserRegistration creates a new account.
+func (ss *SchoolSystem) HandleNewUserRegistration() {
+	fmt.Println("\n--- Create Account ---")
+
+	fmt.Print("Choose Role (1 = Student, 2 = Lecturer): ")
+	roleChoice := ss.ReadInput()
+
+	var role string
+
+	if roleChoice == "1" {
+		role = "student"
+	} else if roleChoice == "2" {
+		role = "lecturer"
+	} else {
+		fmt.Println("Invalid role selection.")
+		return
+	}
+
+	fmt.Print("Enter Unique ID: ")
 	id := ss.ReadInput()
-	
-	fmt.Print("Enter OTP Received: ")
-	code := ss.ReadInput()
 
-	pending, exists := ss.PendingOTPs[id]
-	if !exists || pending.Code != code || time.Now().After(pending.ExpiresAt) {
-		fmt.Println("Invalid token code or window timeframe expired.")
+	if existingUser, _ := ss.DB.GetUserByID(id); existingUser != nil {
+		fmt.Println("This ID is already registered.")
 		return
 	}
 
-	fmt.Print("Enter New Secure Password: ")
-	newPassword := ss.SanitizeField(ss.ReadInput())
+	fmt.Print("Enter Surname: ")
+	surname := ss.ReadInput()
 
-	if newPassword == "" {
-		fmt.Println("Error: Password cannot be completely empty.")
+	fmt.Print("Enter First Name: ")
+	firstName := ss.ReadInput()
+
+	fmt.Print("Enter Official Email: ")
+	email := strings.ToLower(ss.ReadInput())
+
+	if !strings.HasSuffix(email, "@university.edu") {
+		fmt.Println("Please use your official school email.")
 		return
 	}
 
-	// Read state, change field, update map entry
-	user := ss.Users[id]
-	user.Password = newPassword
-	ss.Users[id] = user
+	fmt.Print("Set Password: ")
+	password := ss.ReadInput()
 
-	// Flush state down to flat storage file safely
-	ss.RewriteUsers()
-	delete(ss.PendingOTPs, id)
-	fmt.Println("Success: Password altered successfully. Access updated.")
+	fmt.Print("Set Recovery Question: ")
+	securityQuestion := ss.ReadInput()
+
+	fmt.Print("Set Recovery Answer: ")
+	securityAnswer := strings.ToLower(ss.ReadInput())
+
+	newUser := &storage.User{
+		ID:               id,
+		Surname:          surname,
+		FirstName:        firstName,
+		Password:         password,
+		Email:            email,
+		Role:             role,
+		SecurityQuestion: securityQuestion,
+		SecurityAnswer:   securityAnswer,
+	}
+
+	if err := ss.DB.SaveUser(newUser); err != nil {
+		fmt.Printf("Could not create account: %v\n", err)
+		return
+	}
+
+	fmt.Println("Account created successfully.")
 }

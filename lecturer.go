@@ -2,175 +2,213 @@ package main
 
 import (
 	"fmt"
+	"sims/storage"
 	"strconv"
-	"strings"
-	"time"
 )
 
-// LecturerMenu handles administrative dashboard views attached to the SchoolSystem struct context.
-func (ss *SchoolSystem) LecturerMenu(lecturerName string) {
+// RunLecturerDashboard displays lecturer options
+// and handles lecturer actions.
+func (ss *SchoolSystem) RunLecturerDashboard(lecturer *storage.User) {
 	for {
-		fmt.Printf("\n--- Lecturer Dashboard (Welcome, Prof. %s) ---\n", lecturerName)
-		fmt.Println("1. Post/Update Student Result")
-		fmt.Println("2. Post Availability Notice")
-		fmt.Println("3. Post/Update Assessment or Exam Timetable")
-		fmt.Println("4. Register a New Faculty Lecturer")
-		fmt.Println("5. Logout")
-		fmt.Print("Choose action: ")
+		ss.ClearTerminal()
+
+		fmt.Println("==================================================")
+		fmt.Printf("  Lecturer Dashboard — %s %s\n", lecturer.Surname, lecturer.FirstName)
+		fmt.Println("==================================================")
+
+		fmt.Println("\n1. View Course Enrollments")
+		fmt.Println("2. Upload Student Result")
+		fmt.Println("3. Post Notice")
+		fmt.Println("4. Logout")
+
+		fmt.Print("\nChoose an option: ")
 
 		choice := ss.ReadInput()
 
 		switch choice {
+
 		case "1":
-			for {
-				fmt.Print("\nEnter Student Matriculation Number: ")
-				sID := ss.SanitizeField(ss.ReadInput())
+			ss.ClearTerminal()
+			ss.HandleViewCourseEnrollments(lecturer)
 
-				if _, exists := ss.Users[sID]; !exists {
-					fmt.Println(" Error: Student profile ID does not exist in the database.")
-					break
-				}
-
-				fmt.Print("Enter Course Code (e.g., CMP301): ")
-				course := strings.ToUpper(ss.SanitizeField(ss.ReadInput()))
-
-				fmt.Print("Enter Grade/Score Letter (A, B, C, D, E, F): ")
-				grade := strings.ToUpper(ss.SanitizeField(ss.ReadInput()))
-
-				if grade != "A" && grade != "B" && grade != "C" && grade != "D" && grade != "E" && grade != "F" {
-					fmt.Println(" Error: Invalid grade letter. Must be A, B, C, D, E, or F.")
-					continue
-				}
-
-				fmt.Print("Enter Course Credit Units (e.g., 3 or 4): ")
-				unitsStr := ss.SanitizeField(ss.ReadInput())
-				
-				units, err := strconv.Atoi(unitsStr)
-				if err != nil || units <= 0 || units > 6 {
-					fmt.Println(" Error: Credit units must be a number between 1 and 6.")
-					continue
-				}
-
-				if sID == "" || course == "" {
-					fmt.Println(" Error: Missing fields. All parameters are required.")
-					continue
-				}
-
-				key := sID + "_" + course
-				ss.Results[key] = StudentResult{
-					StudentID:   sID,
-					CourseCode:  course,
-					Grade:       grade,
-					CreditUnits: units,
-				}
-
-				ss.RewriteResults()
-				fmt.Println(" Success: Student score updated safely on disk!")
-				break
-			}
+			fmt.Print("\nPress ENTER to continue...")
+			ss.ReadInput()
 
 		case "2":
-			fmt.Print("\nEnter announcement message: ")
-			msg := ss.SanitizeField(ss.ReadInput())
+			ss.ClearTerminal()
+			ss.HandleGradeSubmission(lecturer)
 
-			if msg == "" {
-				fmt.Println(" Error: Cannot post an empty announcement.")
-				continue
-			}
-
-			id := fmt.Sprintf("%d", time.Now().UnixNano())
-			ss.Notices[id] = Notice{
-				ID:        id,
-				Author:    lecturerName,
-				Content:   msg,
-				Timestamp: time.Now(),
-			}
-
-			ss.RewriteNotices()
-			fmt.Println(" Notice posted successfully!")
+			fmt.Print("\nPress ENTER to continue...")
+			ss.ReadInput()
 
 		case "3":
-			fmt.Print("\nEnter Schedule ID: ")
-			id := ss.SanitizeField(ss.ReadInput())
+			ss.ClearTerminal()
+			ss.HandlePublishNotice(lecturer)
 
-			fmt.Print("Type (Assessment/Exam): ")
-			tType := ss.SanitizeField(ss.ReadInput())
-
-			fmt.Print("Course Code: ")
-			course := strings.ToUpper(ss.SanitizeField(ss.ReadInput()))
-
-			fmt.Print("Date & Time: ")
-			dt := ss.SanitizeField(ss.ReadInput())
-
-			fmt.Print("Venue: ")
-			venue := ss.SanitizeField(ss.ReadInput())
-
-			if id == "" || tType == "" || course == "" || dt == "" || venue == "" {
-				fmt.Println(" Error: Missing parameters. Operation aborted.")
-				continue
-			}
-
-			ss.Timetables[id] = TimetableItem{
-				ID:         id,
-				Type:       tType,
-				CourseCode: course,
-				DateTime:   dt,
-				Venue:      venue,
-			}
-
-			ss.RewriteTimetables()
-			fmt.Println(" Timetable updated successfully!")
+			fmt.Print("\nPress ENTER to continue...")
+			ss.ReadInput()
 
 		case "4":
-			fmt.Println("\n--- Create New Lecturer Account ---")
-			
-			fmt.Print("Enter New Staff ID / Username (e.g., STF002): ")
-			staffID := ss.SanitizeField(ss.ReadInput())
-			
-			if _, exists := ss.Users[staffID]; exists {
-				fmt.Println(" Error: A user with this ID already exists in the system.")
-				continue
-			}
-
-			fmt.Print("Enter Surname: ")
-			surname := ss.SanitizeField(ss.ReadInput())
-			
-			fmt.Print("Enter Middle Name (Optional, press Enter to skip): ")
-			middleName := ss.SanitizeField(ss.ReadInput())
-			
-			fmt.Print("Enter First Name: ")
-			firstName := ss.SanitizeField(ss.ReadInput())
-			
-			fmt.Print("Set Temporary Account Password: ")
-			password := ss.SanitizeField(ss.ReadInput())
-			
-			fmt.Print("Enter Official Email Address: ")
-			email := ss.SanitizeField(ss.ReadInput())
-
-			if staffID == "" || surname == "" || firstName == "" || password == "" || email == "" {
-				fmt.Println(" Error: All fields except Middle Name are strictly mandatory.")
-				continue
-			}
-
-			ss.Users[staffID] = User{
-				ID:         staffID,
-				Surname:    surname,
-				MiddleName: middleName,
-				FirstName:  firstName,
-				Password:   password,
-				Email:      email,
-				Role:       "lecturer",
-			}
-
-			ss.RewriteUsers()
-			fmt.Printf(" Success! Account for Prof. %s has been created.\n", surname)
-
-		case "5":
-			fmt.Println("Logging out of administrative terminal...")
 			return
 
 		default:
-			fmt.Println("Invalid choice, please select an option from 1 to 5.")
+			fmt.Println("Invalid option.")
 		}
 	}
+
+}
+
+// HandleViewCourseEnrollments shows courses
+// assigned to the lecturer.
+func (ss *SchoolSystem) HandleViewCourseEnrollments(lecturer *storage.User) {
+	fmt.Println("\n--- Course Enrollments ---")
+
+	allCourses, err := ss.DB.GetAllCourses()
+
+	if err != nil || len(allCourses) == 0 {
+		fmt.Println("No courses found.")
+		return
+	}
+
+	found := false
+
+	for _, course := range allCourses {
+
+		if course.LecturerID == lecturer.ID {
+			found = true
+
+			fmt.Printf("\nCourse: %s - %s\n", course.Code, course.Title)
+			fmt.Println("--------------------------------------------")
+			fmt.Println("Students are currently enrolled in this course.")
+		}
+	}
+
+	if !found {
+		fmt.Println("No courses assigned to you yet.")
+	}
+
+}
+
+// HandleGradeSubmission allows lecturers
+// to upload student grades.
+func (ss *SchoolSystem) HandleGradeSubmission(lecturer *storage.User) {
+	fmt.Println("\n--- Upload Student Result ---")
+
+	fmt.Print("Enter Student ID: ")
+	studentID := ss.ReadInput()
+
+	if studentID == "" {
+		return
+	}
+
+	fmt.Print("Enter Course Code: ")
+	courseCode := ss.ReadInput()
+
+	if courseCode == "" {
+		return
+	}
+
+	course, err := ss.DB.GetCourse(courseCode)
+
+	if err != nil || course == nil {
+		fmt.Println("Course not found.")
+		return
+	}
+
+	if course.LecturerID != lecturer.ID {
+		fmt.Println("You are not assigned to this course.")
+		return
+	}
+
+	fmt.Print("Enter Score (0 - 100): ")
+
+	scoreInput := ss.ReadInput()
+
+	score, err := strconv.Atoi(scoreInput)
+
+	if err != nil || score < 0 || score > 100 {
+		fmt.Println("Enter a valid score between 0 and 100.")
+		return
+	}
+
+	var grade string
+
+	switch {
+	case score >= 70:
+		grade = "A"
+
+	case score >= 60:
+		grade = "B"
+
+	case score >= 50:
+		grade = "C"
+
+	case score >= 45:
+		grade = "D"
+
+	default:
+		grade = "F"
+	}
+
+	result := &storage.StudentResult{
+		StudentID:  studentID,
+		CourseCode: courseCode,
+		Score:      score,
+		Grade:      grade,
+	}
+
+	if err := ss.DB.SaveResult(result); err != nil {
+		fmt.Println("Could not save result.")
+		return
+	}
+
+	fmt.Printf("\nResult uploaded successfully.\n")
+	fmt.Printf("Student: %s\n", studentID)
+	fmt.Printf("Course : %s\n", courseCode)
+	fmt.Printf("Grade  : %s\n", grade)
+
+}
+
+// HandlePublishNotice allows lecturers
+// to publish notices to students.
+func (ss *SchoolSystem) HandlePublishNotice(lecturer *storage.User) {
+	fmt.Println("\n--- Post Notice ---")
+
+	fmt.Print("Enter Notice ID: ")
+	noticeID := ss.ReadInput()
+
+	if noticeID == "" {
+		return
+	}
+
+	fmt.Print("Enter Department (or GENERAL): ")
+	targetDept := ss.ReadInput()
+
+	if targetDept == "" {
+		targetDept = "GENERAL"
+	}
+
+	fmt.Print("Enter Notice Message:\n> ")
+
+	content := ss.ReadInput()
+
+	if content == "" {
+		return
+	}
+
+	notice := &storage.Notice{
+		ID:               noticeID,
+		AuthorID:         lecturer.ID,
+		Author:           lecturer.Surname + " " + lecturer.FirstName,
+		TargetDepartment: targetDept,
+		Content:          content,
+	}
+
+	if err := ss.DB.SaveNotice(notice); err != nil {
+		fmt.Println("Could not publish notice.")
+		return
+	}
+
+	fmt.Println("\nNotice posted successfully.")
+
 }

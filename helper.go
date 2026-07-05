@@ -1,26 +1,41 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 )
 
-// ReadInput is now a method bound to the SchoolSystem struct.
-// It uses the system's internal console scanner cleanly without needing parameters.
+// ReadInput reads and cleans user input from the terminal.
 func (ss *SchoolSystem) ReadInput() string {
-	if ss.ConsoleScanner.Scan() {
-		return ss.ConsoleScanner.Text()
+	if !ss.ConsoleScanner.Scan() {
+		return ""
 	}
-	return ""
+
+	return strings.TrimSpace(ss.ConsoleScanner.Text())
+
 }
 
-// SanitizeField is now a method bound to the SchoolSystem struct.
-// It intercepts database-breaking characters before they can corrupt your flat files.
-func (ss *SchoolSystem) SanitizeField(input string) string {
-	trimmed := strings.TrimSpace(input)
-	
-	// Strip out colons (:) and pipes (|) so they don't break the data file columns
-	escaped := strings.ReplaceAll(trimmed, ":", "")
-	escaped = strings.ReplaceAll(escaped, "|", "")
-	
-	return escaped
+// DisplaySystemHeader shows a formatted section title.
+func (ss *SchoolSystem) DisplaySystemHeader(title string) {
+	fmt.Println("\n==================================================")
+	fmt.Printf("  %s\n", strings.ToUpper(title))
+	fmt.Println("==================================================")
+}
+
+// ClearTerminal clears the console screen before showing new content.
+func (ss *SchoolSystem) ClearTerminal() {
+	var cmd *exec.Cmd
+
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "cls")
+	} else {
+		cmd = exec.Command("clear")
+	}
+
+	cmd.Stdout = os.Stdout
+	_ = cmd.Run()
+
 }
